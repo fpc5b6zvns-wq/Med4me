@@ -1,253 +1,241 @@
-"""
-ML Model Training Script for Med4Me
-Run this script to create ml_model.pkl, vectorizer.pkl, and treatment_db.json
-
-Usage:
-    python train_model.py
-"""
-
-import pickle
-import json
+import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from pathlib import Path
+from sklearn.preprocessing import LabelEncoder
+import pickle
+import json
 
-# Training data - medical symptoms and conditions
+# Medical training dataset
 training_data = [
-    # Fever cases
-    ("fever high temperature chills body ache", "fever", 28, 0),
-    ("running fever since yesterday headache", "fever", 35, 1),
-    ("high fever 102F with body pain", "fever", 42, 0),
-    ("temperature 103 shivering cold", "fever", 25, 1),
-    ("fever not coming down paracetamol", "fever", 33, 0),
+    # Fever/Flu cases
+    {"symptoms": "fever high temperature chills body ache", "age": 35, "gender": "male", "diagnosis": "Acute Febrile Illness", "category": "fever"},
+    {"symptoms": "fever headache fatigue weakness", "age": 28, "gender": "female", "diagnosis": "Acute Febrile Illness", "category": "fever"},
+    {"symptoms": "high fever sweating body pain", "age": 42, "gender": "male", "diagnosis": "Acute Febrile Illness", "category": "fever"},
+    {"symptoms": "temperature pyrexia malaise", "age": 25, "gender": "female", "diagnosis": "Acute Febrile Illness", "category": "fever"},
     
     # Diabetes cases
-    ("high blood sugar frequent urination thirst", "diabetes", 45, 0),
-    ("diabetes type 2 sugar levels high", "diabetes", 52, 1),
-    ("hyperglycemia increased thirst weight loss", "diabetes", 48, 0),
-    ("blood glucose 250 fatigue blurred vision", "diabetes", 55, 1),
-    ("diabetic symptoms excessive hunger", "diabetes", 50, 0),
+    {"symptoms": "high blood sugar frequent urination thirst", "age": 55, "gender": "male", "diagnosis": "Type 2 Diabetes Mellitus", "category": "diabetes"},
+    {"symptoms": "diabetes hyperglycemia fatigue blurred vision", "age": 48, "gender": "female", "diagnosis": "Type 2 Diabetes Mellitus", "category": "diabetes"},
+    {"symptoms": "excessive thirst hunger weight loss", "age": 52, "gender": "male", "diagnosis": "Type 2 Diabetes Mellitus", "category": "diabetes"},
+    {"symptoms": "high glucose slow healing frequent infections", "age": 60, "gender": "female", "diagnosis": "Type 2 Diabetes Mellitus", "category": "diabetes"},
     
     # Cold/URTI cases
-    ("cough cold runny nose sneezing", "cold", 30, 1),
-    ("nasal congestion sore throat", "cold", 22, 0),
-    ("upper respiratory infection coughing", "cold", 28, 1),
-    ("common cold symptoms stuffy nose", "cold", 35, 0),
-    ("sneezing watery eyes throat irritation", "cold", 27, 1),
+    {"symptoms": "cough cold sneezing runny nose", "age": 30, "gender": "female", "diagnosis": "Upper Respiratory Tract Infection", "category": "cold"},
+    {"symptoms": "sore throat cough congestion", "age": 22, "gender": "male", "diagnosis": "Upper Respiratory Tract Infection", "category": "cold"},
+    {"symptoms": "nasal congestion sneezing watery eyes", "age": 35, "gender": "female", "diagnosis": "Upper Respiratory Tract Infection", "category": "cold"},
+    {"symptoms": "cold symptoms mucus cough", "age": 28, "gender": "male", "diagnosis": "Upper Respiratory Tract Infection", "category": "cold"},
     
-    # Headache cases
-    ("severe headache pain temples", "headache", 32, 1),
-    ("migraine with aura sensitivity light", "headache", 29, 1),
-    ("tension headache stress related", "headache", 38, 0),
-    ("throbbing headache one side", "headache", 31, 1),
-    ("chronic headaches daily occurrence", "headache", 40, 0),
+    # Headache/Migraine cases
+    {"symptoms": "severe headache pain sensitivity light", "age": 32, "gender": "female", "diagnosis": "Migraine", "category": "headache"},
+    {"symptoms": "headache tension stress neck pain", "age": 40, "gender": "male", "diagnosis": "Tension Headache", "category": "headache"},
+    {"symptoms": "migraine nausea visual disturbance", "age": 29, "gender": "female", "diagnosis": "Migraine", "category": "headache"},
+    {"symptoms": "persistent headache dizziness", "age": 45, "gender": "male", "diagnosis": "Tension Headache", "category": "headache"},
     
     # Hypertension cases
-    ("high blood pressure 160/100", "hypertension", 55, 0),
-    ("hypertension diagnosis elevated bp", "hypertension", 48, 1),
-    ("blood pressure consistently high", "hypertension", 52, 0),
-    ("hbp headache dizziness", "hypertension", 58, 1),
-    ("stage 2 hypertension readings", "hypertension", 60, 0),
+    {"symptoms": "high blood pressure headache dizziness", "age": 58, "gender": "male", "diagnosis": "Hypertension", "category": "hypertension"},
+    {"symptoms": "hypertension chest discomfort shortness breath", "age": 62, "gender": "female", "diagnosis": "Hypertension", "category": "hypertension"},
+    {"symptoms": "elevated bp nosebleed fatigue", "age": 55, "gender": "male", "diagnosis": "Hypertension", "category": "hypertension"},
     
     # Asthma cases
-    ("asthma attack wheezing breathing difficulty", "asthma", 25, 1),
-    ("shortness of breath chest tightness", "asthma", 32, 0),
-    ("reactive airway disease coughing night", "asthma", 28, 1),
-    ("bronchial asthma inhaler needed", "asthma", 35, 0),
-    ("wheezing episodes seasonal", "asthma", 30, 1),
+    {"symptoms": "wheezing difficulty breathing chest tightness", "age": 25, "gender": "female", "diagnosis": "Asthma", "category": "asthma"},
+    {"symptoms": "asthma attack shortness breath cough", "age": 32, "gender": "male", "diagnosis": "Asthma", "category": "asthma"},
+    {"symptoms": "breathing difficulty wheezing night", "age": 28, "gender": "female", "diagnosis": "Asthma", "category": "asthma"},
     
-    # Gastritis cases
-    ("stomach pain acidity heartburn", "gastric", 40, 0),
-    ("acid reflux burning sensation chest", "gastric", 38, 1),
-    ("gastritis epigastric pain nausea", "gastric", 45, 0),
-    ("indigestion bloating gas", "gastric", 35, 1),
-    ("gerd symptoms frequent", "gastric", 42, 0),
+    # Gastritis/Stomach cases
+    {"symptoms": "stomach pain burning sensation nausea", "age": 38, "gender": "male", "diagnosis": "Gastritis", "category": "gastric"},
+    {"symptoms": "acidity heartburn indigestion", "age": 42, "gender": "female", "diagnosis": "Gastritis", "category": "gastric"},
+    {"symptoms": "abdominal pain bloating gas", "age": 35, "gender": "male", "diagnosis": "Gastritis", "category": "gastric"},
     
     # Allergy cases
-    ("allergic reaction rash itching", "allergy", 27, 1),
-    ("skin allergy hives red patches", "allergy", 32, 0),
-    ("urticaria severe itching", "allergy", 29, 1),
-    ("food allergy symptoms swelling", "allergy", 25, 0),
-    ("seasonal allergies sneezing eyes", "allergy", 30, 1),
+    {"symptoms": "skin rash itching hives", "age": 27, "gender": "female", "diagnosis": "Allergic Reaction", "category": "allergy"},
+    {"symptoms": "allergic reaction swelling face", "age": 33, "gender": "male", "diagnosis": "Allergic Reaction", "category": "allergy"},
+    {"symptoms": "itchy eyes sneezing seasonal allergy", "age": 29, "gender": "female", "diagnosis": "Allergic Rhinitis", "category": "allergy"},
     
     # Arthritis cases
-    ("joint pain knee swelling", "arthritis", 58, 1),
-    ("osteoarthritis both knees stiffness", "arthritis", 62, 0),
-    ("arthritis pain morning stiffness", "arthritis", 55, 1),
-    ("degenerative joint disease back pain", "arthritis", 60, 0),
-    ("rheumatoid arthritis multiple joints", "arthritis", 52, 1),
+    {"symptoms": "joint pain swelling stiffness morning", "age": 65, "gender": "female", "diagnosis": "Osteoarthritis", "category": "arthritis"},
+    {"symptoms": "arthritis knee pain difficulty walking", "age": 58, "gender": "male", "diagnosis": "Osteoarthritis", "category": "arthritis"},
     
-    # Mental health cases
-    ("anxiety panic attacks stress", "mental_health", 28, 1),
-    ("depression sad mood sleeping problems", "mental_health", 35, 0),
-    ("severe anxiety work related", "mental_health", 32, 1),
-    ("depressive symptoms loss interest", "mental_health", 40, 1),
-    ("panic disorder frequent episodes", "mental_health", 30, 0),
-    
-    # General cases
-    ("general checkup routine health", "general", 35, 0),
-    ("mild symptoms unclear diagnosis", "general", 28, 1),
-    ("preventive care health maintenance", "general", 40, 0),
-    ("wellness check no specific complaints", "general", 32, 1),
+    # Anxiety/Depression cases
+    {"symptoms": "anxiety worry nervousness panic", "age": 30, "gender": "female", "diagnosis": "Anxiety Disorder", "category": "mental_health"},
+    {"symptoms": "depression sadness loss interest fatigue", "age": 35, "gender": "male", "diagnosis": "Depression", "category": "mental_health"},
 ]
 
-# Treatment database
+# Treatment recommendations database
 treatment_db = {
     "fever": {
-        "Medicine": "- Paracetamol 500 mg: Every 6 hours for fever\n- Maintain hydration with ORS",
-        "Alternative": "- Ibuprofen 400 mg: Every 8 hours if no contraindications\n- Cold compress",
-        "Lifestyle": "Fluids (2-3 liters/day), rest, monitor temperature",
-        "Red Flags": "Fever >39°C for >3 days, severe headache, rash, breathing difficulty",
-        "Follow-Up": "Review in 48 hours if fever persists"
+        "Medicine": "- Paracetamol 500 mg: Every 6 hours for fever\n- Ibuprofen 400 mg: Alternative if no contraindications",
+        "Alternative": "- Cold compress on forehead\n- Sponge bath with lukewarm water",
+        "Lifestyle": "Hydration (8-10 glasses water), rest, light diet, avoid cold beverages.",
+        "Red Flags": "Fever >3 days, severe headache, rash, difficulty breathing, confusion.",
+        "Follow-Up": "Review in 48 hours if fever persists or worsens."
     },
     "diabetes": {
-        "Medicine": "- Metformin 500 mg: BD with meals\n- Monitor blood glucose regularly",
-        "Alternative": "- Glimepiride 1-2 mg OD\n- DPP-4 inhibitors (Sitagliptin 100 mg OD)",
-        "Lifestyle": "Low glycemic diet, 150 min exercise/week, weight management",
-        "Red Flags": "Glucose >400 mg/dL, confusion, chest pain, fruity breath odor",
-        "Follow-Up": "HbA1c every 3 months, annual eye/foot examination"
+        "Medicine": "- Metformin 500 mg: BD with meals\n- Glimepiride 1 mg: OD before breakfast (if needed)",
+        "Alternative": "- DPP-4 inhibitors (Sitagliptin) if metformin not tolerated\n- Insulin therapy for uncontrolled cases",
+        "Lifestyle": "Low glycemic diet, regular exercise (30 min daily), monitor blood glucose, weight management.",
+        "Red Flags": "Glucose >400 mg/dL, confusion, chest pain, excessive thirst, diabetic ketoacidosis signs.",
+        "Follow-Up": "HbA1c every 3 months, fasting glucose weekly, regular eye and foot checks."
     },
     "cold": {
-        "Medicine": "- Cetirizine 10 mg: Once daily at bedtime\n- Dextromethorphan cough syrup: 10 mL TDS",
-        "Alternative": "- Loratadine 10 mg OD\n- Steam inhalation 2-3 times daily",
-        "Lifestyle": "Rest, warm fluids, avoid cold beverages, humidify room",
-        "Red Flags": "High fever >38.5°C, chest pain, difficulty breathing",
-        "Follow-Up": "Review if symptoms persist beyond 5-7 days"
+        "Medicine": "- Cetirizine 10 mg: Once daily for runny nose\n- Paracetamol 500 mg: For fever/body ache\n- Cough syrup: As needed",
+        "Alternative": "- Steam inhalation 3x daily\n- Ginger-honey tea\n- Saline nasal drops",
+        "Lifestyle": "Rest, hydration, warm fluids, avoid cold beverages, vitamin C rich foods.",
+        "Red Flags": "High fever, chest pain, difficulty breathing, symptoms >7 days.",
+        "Follow-Up": "Review if symptoms persist beyond 5 days or worsen."
     },
     "headache": {
-        "Medicine": "- Paracetamol 500 mg: Every 6-8 hours\n- Sumatriptan 50 mg for migraine",
-        "Alternative": "- Ibuprofen 400 mg TDS\n- Rest in dark, quiet room",
-        "Lifestyle": "Stress management, regular sleep, hydration, avoid triggers",
-        "Red Flags": "Sudden severe headache, vision changes, neck stiffness",
-        "Follow-Up": "Review if frequency/severity increases"
+        "Medicine": "- Paracetamol 500 mg: Every 6-8 hours as needed\n- For migraine: Sumatriptan 50 mg at onset",
+        "Alternative": "- Ibuprofen 400 mg\n- Cold/warm compress\n- Rest in dark quiet room",
+        "Lifestyle": "Stress management, regular sleep schedule, hydration, avoid triggers (caffeine, bright lights).",
+        "Red Flags": "Sudden severe headache (thunderclap), vision changes, confusion, neck stiffness, seizures.",
+        "Follow-Up": "Review if headaches increase in frequency or severity. Consider CT/MRI if red flags present."
     },
     "hypertension": {
-        "Medicine": "- Amlodipine 5 mg: Once daily\n- Monitor BP regularly",
-        "Alternative": "- Losartan 50 mg OD\n- Enalapril 5 mg OD",
-        "Lifestyle": "Low sodium diet, DASH diet, exercise, weight reduction",
-        "Red Flags": "BP >180/120, chest pain, severe headache, vision changes",
-        "Follow-Up": "BP monitoring weekly initially, review medications every 3 months"
+        "Medicine": "- Amlodipine 5 mg: Once daily\n- Losartan 50 mg: Once daily (if needed)\n- Aspirin 75 mg: For cardiovascular protection",
+        "Alternative": "- Beta-blockers (Metoprolol) if tachycardia present\n- Diuretics (Hydrochlorothiazide) for fluid retention",
+        "Lifestyle": "Low salt diet (<5g/day), DASH diet, regular exercise, stress reduction, weight loss, limit alcohol.",
+        "Red Flags": "BP >180/120, severe headache, chest pain, shortness of breath, visual changes.",
+        "Follow-Up": "BP monitoring weekly, review medication in 4 weeks, annual cardiac assessment."
     },
     "asthma": {
-        "Medicine": "- Salbutamol inhaler: 2 puffs PRN\n- Budesonide 200 mcg: BD",
-        "Alternative": "- Montelukast 10 mg once daily\n- Formoterol + Budesonide combination",
-        "Lifestyle": "Avoid triggers, breathing exercises, healthy weight, flu vaccination",
-        "Red Flags": "Severe breathing difficulty, blue lips, unable to speak sentences",
-        "Follow-Up": "Review in 2 weeks, peak flow monitoring"
+        "Medicine": "- Salbutamol inhaler: 2 puffs PRN for breathlessness\n- Beclomethasone inhaler: 2 puffs BD (controller)",
+        "Alternative": "- Montelukast 10 mg: Once daily\n- Nebulization with salbutamol in acute attack",
+        "Lifestyle": "Avoid triggers (dust, smoke, allergens), regular inhaler use, breathing exercises.",
+        "Red Flags": "Severe breathlessness, unable to speak, blue lips, no response to inhaler.",
+        "Follow-Up": "Peak flow monitoring, review in 2 weeks, pulmonary function tests annually."
     },
     "gastric": {
-        "Medicine": "- Omeprazole 20 mg: Once daily before breakfast\n- Antacid syrup after meals",
-        "Alternative": "- Pantoprazole 40 mg OD\n- Ranitidine 150 mg BD",
-        "Lifestyle": "Small frequent meals, avoid spicy/fatty foods, elevate head while sleeping",
-        "Red Flags": "Vomiting blood, black stools, weight loss, difficulty swallowing",
-        "Follow-Up": "Review in 4 weeks, consider endoscopy if persistent"
+        "Medicine": "- Pantoprazole 40 mg: Once daily before breakfast\n- Antacids: As needed for immediate relief",
+        "Alternative": "- Ranitidine 150 mg: BD if PPI not tolerated\n- Sucralfate for mucosal protection",
+        "Lifestyle": "Small frequent meals, avoid spicy/oily foods, no late night meals, reduce stress, avoid NSAIDs.",
+        "Red Flags": "Severe abdominal pain, vomiting blood, black stools, unexplained weight loss.",
+        "Follow-Up": "Review in 4 weeks. Consider endoscopy if symptoms persist or red flags present."
     },
     "allergy": {
-        "Medicine": "- Cetirizine 10 mg once daily\n- Hydrocortisone cream 1%: Apply BD",
-        "Alternative": "- Loratadine 10 mg OD\n- Calamine lotion for relief",
-        "Lifestyle": "Identify triggers, loose cotton clothing, keep skin moisturized",
-        "Red Flags": "Difficulty breathing, facial swelling, loss of consciousness",
-        "Follow-Up": "Review in 1 week, allergy testing if recurrent"
+        "Medicine": "- Cetirizine 10 mg: Once daily\n- Hydrocortisone cream: For skin rash BD\n- In severe reaction: Epinephrine auto-injector",
+        "Alternative": "- Loratadine 10 mg if cetirizine causes drowsiness\n- Calamine lotion for itching",
+        "Lifestyle": "Identify and avoid allergen, keep antihistamines handy, wear medical alert bracelet if severe.",
+        "Red Flags": "Swelling of face/tongue, difficulty breathing, rapid pulse, anaphylaxis.",
+        "Follow-Up": "Allergy testing if recurrent. Emergency plan for severe allergies."
     },
     "arthritis": {
-        "Medicine": "- Ibuprofen 400 mg TDS after meals\n- Glucosamine + Chondroitin daily",
-        "Alternative": "- Naproxen 250 mg BD\n- Topical diclofenac gel",
-        "Lifestyle": "Weight reduction, low-impact exercises, physical therapy",
-        "Red Flags": "Severe pain, joint swelling/warmth, inability to bear weight",
-        "Follow-Up": "Review in 2 weeks, X-rays if severe"
+        "Medicine": "- Ibuprofen 400 mg: TDS with food\n- Glucosamine supplements: For joint health",
+        "Alternative": "- Paracetamol for mild pain\n- Topical NSAIDs (Diclofenac gel)",
+        "Lifestyle": "Regular low-impact exercise (swimming, walking), weight management, physiotherapy, hot/cold therapy.",
+        "Red Flags": "Severe joint swelling, redness, warmth, inability to move joint, fever.",
+        "Follow-Up": "Review in 4-6 weeks. X-ray if severe. Consider rheumatologist referral."
     },
     "mental_health": {
-        "Medicine": "- Escitalopram 10 mg once daily (after psychiatric evaluation)\n- Consider counseling first",
-        "Alternative": "- Sertraline 50 mg OD\n- Cognitive Behavioral Therapy",
-        "Lifestyle": "Regular exercise, adequate sleep, social support, meditation",
-        "Red Flags": "Suicidal thoughts, self-harm, severe panic attacks",
-        "Follow-Up": "Psychiatric referral recommended, review in 1 week"
+        "Medicine": "- For anxiety: Escitalopram 10 mg OD or Alprazolam 0.25 mg SOS\n- For depression: Sertraline 50 mg OD",
+        "Alternative": "- Cognitive Behavioral Therapy (CBT)\n- Mindfulness and meditation\n- Support groups",
+        "Lifestyle": "Regular exercise, good sleep hygiene, social support, stress management, avoid alcohol/drugs.",
+        "Red Flags": "Suicidal thoughts, self-harm, severe agitation, psychotic symptoms.",
+        "Follow-Up": "Weekly counseling sessions, medication review in 2 weeks. Psychiatric referral if severe."
     },
     "general": {
-        "Medicine": "- Symptomatic treatment as needed\n- Maintain healthy lifestyle",
-        "Alternative": "- Specific treatment based on detailed examination",
-        "Lifestyle": "Balanced diet, regular exercise, adequate sleep",
-        "Red Flags": "Any persistent or worsening symptoms",
-        "Follow-Up": "As clinically indicated"
+        "Medicine": "- Symptomatic treatment based on presentation\n- Paracetamol 500 mg: As needed for pain/fever",
+        "Alternative": "- Rest and hydration\n- Monitor symptoms",
+        "Lifestyle": "Healthy diet, adequate rest, hydration, stress management.",
+        "Red Flags": "Persistent symptoms >3 days, worsening condition, new concerning symptoms.",
+        "Follow-Up": "Review in 48-72 hours if no improvement."
     }
 }
 
-def train_model():
-    """Train the ML model and save artifacts"""
-    print("Starting model training...")
-    
-    # Prepare data
-    symptoms = [item[0] for item in training_data]
-    labels = [item[1] for item in training_data]
-    ages = [item[2] for item in training_data]
-    genders = [item[3] for item in training_data]
-    
-    # Create TF-IDF vectorizer
-    print("Creating TF-IDF vectorizer...")
-    vectorizer = TfidfVectorizer(max_features=100, ngram_range=(1, 2))
-    X_text = vectorizer.fit_transform(symptoms)
-    
-    # Combine features
-    print("Combining features...")
-    X = np.hstack([
-        X_text.toarray(),
-        np.array(ages).reshape(-1, 1),
-        np.array(genders).reshape(-1, 1)
-    ])
-    y = np.array(labels)
-    
-    # Split data
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
-    
-    # Train model
-    print("Training Random Forest classifier...")
-    model = RandomForestClassifier(
-        n_estimators=100,
-        max_depth=10,
-        random_state=42,
-        class_weight='balanced'
-    )
-    model.fit(X_train, y_train)
-    
-    # Evaluate
-    train_score = model.score(X_train, y_train)
-    test_score = model.score(X_test, y_test)
-    print(f"Training accuracy: {train_score:.2%}")
-    print(f"Testing accuracy: {test_score:.2%}")
-    
-    # Save artifacts
-    print("\nSaving model artifacts...")
-    
-    # Get the directory where this script is located
-    script_dir = Path(__file__).parent
-    
-    # Save model
-    model_path = script_dir / 'ml_model.pkl'
-    with open(model_path, 'wb') as f:
-        pickle.dump(model, f)
-    print(f"✓ Saved model to: {model_path}")
-    
-    # Save vectorizer
-    vectorizer_path = script_dir / 'vectorizer.pkl'
-    with open(vectorizer_path, 'wb') as f:
-        pickle.dump(vectorizer, f)
-    print(f"✓ Saved vectorizer to: {vectorizer_path}")
-    
-    # Save treatment database
-    treatment_path = script_dir / 'treatment_db.json'
-    with open(treatment_path, 'w') as f:
-        json.dump(treatment_db, f, indent=2)
-    print(f"✓ Saved treatment database to: {treatment_path}")
-    
-    print("\n✅ Model training complete!")
-    print("\nYou can now run your Streamlit app:")
-    print("streamlit run app.py")
-    
-    return model, vectorizer, treatment_db
+print("="*60)
+print("Med4Me ML Model Training Script")
+print("="*60)
 
-if __name__ == "__main__":
-    train_model()
+# Create DataFrame
+df = pd.DataFrame(training_data)
+print(f"\n✓ Loaded {len(df)} training samples")
+
+# Feature engineering
+df['age_group'] = pd.cut(df['age'], bins=[0, 18, 35, 50, 65, 100], labels=['child', 'young_adult', 'middle_age', 'senior', 'elderly'])
+df['gender_encoded'] = df['gender'].map({'male': 0, 'female': 1})
+
+# Prepare features
+X_text = df['symptoms']
+X_age = df['age'].values.reshape(-1, 1)
+X_gender = df['gender_encoded'].values.reshape(-1, 1)
+y = df['category']
+
+# Text vectorization
+print("\n✓ Creating TF-IDF vectorizer...")
+vectorizer = TfidfVectorizer(max_features=100, ngram_range=(1, 2))
+X_text_vectors = vectorizer.fit_transform(X_text)
+
+# Combine features
+X_combined = np.hstack([
+    X_text_vectors.toarray(),
+    X_age,
+    X_gender
+])
+
+print(f"✓ Feature matrix shape: {X_combined.shape}")
+
+# Train model
+print("\n✓ Training Random Forest model...")
+model = RandomForestClassifier(n_estimators=100, random_state=42, max_depth=10)
+model.fit(X_combined, y)
+
+# Calculate training accuracy
+train_accuracy = model.score(X_combined, y)
+print(f"✓ Training accuracy: {train_accuracy*100:.2f}%")
+
+# Feature importance
+feature_names = vectorizer.get_feature_names_out().tolist() + ['age', 'gender']
+importances = model.feature_importances_
+top_features = sorted(zip(feature_names, importances), key=lambda x: x[1], reverse=True)[:10]
+print("\n✓ Top 10 important features:")
+for feat, imp in top_features:
+    print(f"  - {feat}: {imp:.4f}")
+
+# Save model and vectorizer
+print("\n✓ Saving model files...")
+with open('ml_model.pkl', 'wb') as f:
+    pickle.dump(model, f)
+
+with open('vectorizer.pkl', 'wb') as f:
+    pickle.dump(vectorizer, f)
+
+with open('treatment_db.json', 'w') as f:
+    json.dump(treatment_db, f, indent=2)
+
+print("\n✓ Model saved as: ml_model.pkl")
+print("✓ Vectorizer saved as: vectorizer.pkl")
+print("✓ Treatment database saved as: treatment_db.json")
+
+# Test prediction
+print("\n" + "="*60)
+print("Testing Model with Sample Cases")
+print("="*60)
+
+test_cases = [
+    {"symptoms": "high fever and body ache", "age": 30, "gender": "male"},
+    {"symptoms": "frequent urination and excessive thirst", "age": 55, "gender": "female"},
+    {"symptoms": "severe headache with nausea", "age": 35, "gender": "female"},
+]
+
+for i, test in enumerate(test_cases, 1):
+    # Prepare test features
+    test_vector = vectorizer.transform([test['symptoms']])
+    test_age = np.array([[test['age']]])
+    test_gender = np.array([[0 if test['gender'] == 'male' else 1]])
+    test_combined = np.hstack([test_vector.toarray(), test_age, test_gender])
+    
+    # Predict
+    prediction = model.predict(test_combined)[0]
+    probabilities = model.predict_proba(test_combined)[0]
+    confidence = max(probabilities) * 100
+    
+    print(f"\nTest Case {i}:")
+    print(f"  Symptoms: {test['symptoms']}")
+    print(f"  Age: {test['age']}, Gender: {test['gender']}")
+    print(f"  Predicted: {prediction} (Confidence: {confidence:.1f}%)")
+
+print("\n" + "="*60)
+print("✓ Model training completed successfully!")
+print("="*60)
+print("\nNext step: Run the Flask app with 'python app.py'")
+print("The app will automatically use the ML model.")
