@@ -8,8 +8,6 @@ from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 import numpy as np
 from pathlib import Path
-
-
 # Page configuration
 st.set_page_config(
     page_title="Med4Me - Clinical Decision Support",
