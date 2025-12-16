@@ -8,6 +8,8 @@ from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 import numpy as np
 from pathlib import Path
+import sklearn
+st.sidebar.success(f"sklearn version: {sklearn.__version__}")
 
 # Page configuration
 st.set_page_config(
